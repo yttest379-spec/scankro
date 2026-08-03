@@ -47,3 +47,9 @@ envCrendentials_necessary.md
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+.vercel
+
+scripts/last-deploy-log.txt
+.env
+
