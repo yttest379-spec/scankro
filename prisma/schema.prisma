@@ -1,0 +1,391 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── better-auth ───────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  emailVerified Boolean   @default(false)
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  sessions      Session[]
+  accounts      Account[]
+  members       Member[]
+  invitesSent   Invite[]  @relation("InviteSender")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Account {
+  id                    String    @id @default(cuid())
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+}
+
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+}
+
+// ─── Multi-tenancy ─────────────────────────────────────────
+
+enum Plan {
+  free
+  starter
+  pro
+}
+
+enum MemberRole {
+  owner
+  manager
+  staff
+}
+
+enum SubscriptionStatus {
+  active
+  halted
+  cancelled
+  pending
+  past_due
+}
+
+model Organization {
+  id                   String             @id @default(cuid())
+  name                 String
+  plan                 Plan               @default(free)
+  razorpayCustomerId   String?
+  razorpaySubscriptionId String?
+  subscriptionStatus   SubscriptionStatus @default(pending)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+  members              Member[]
+  branches             Branch[]
+  invites              Invite[]
+  subscriptions        Subscription[]
+}
+
+model Member {
+  id             String       @id @default(cuid())
+  role           MemberRole   @default(owner)
+  userId         String
+  organizationId String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+
+  @@unique([userId, organizationId])
+  @@index([organizationId])
+}
+
+model Invite {
+  id             String       @id @default(cuid())
+  email          String
+  role           MemberRole   @default(staff)
+  token          String       @unique
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invitedById    String
+  invitedBy      User         @relation("InviteSender", fields: [invitedById], references: [id])
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  createdAt      DateTime     @default(now())
+
+  @@index([email])
+  @@index([organizationId])
+}
+
+model Subscription {
+  id                   String             @id @default(cuid())
+  organizationId       String
+  organization         Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plan                 Plan
+  status               SubscriptionStatus @default(pending)
+  razorpaySubscriptionId String?
+  razorpayPlanId       String?
+  currentPeriodEnd     DateTime?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  @@index([organizationId])
+}
+
+// ─── Branch & menu ─────────────────────────────────────────
+
+model Branch {
+  id           String   @id @default(cuid())
+  name         String
+  slug         String   @unique
+  shortId      String   @unique @default(cuid())
+  logoUrl      String?
+  coverUrl     String?
+  backgroundUrl String?
+  address      String?
+  phone        String?
+  hours        Json     @default("{}")
+  socials      Json     @default("{}")
+  theme        Json     @default("{}")
+  locales      String[] @default(["en"])
+  timezone     String   @default("Asia/Kolkata")
+  organizationId String
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  categories      Category[]
+  items           MenuItem[]
+  dailySpecials   DailySpecial[]
+  promotions      Promotion[]
+  seasonalMenus   SeasonalMenu[]
+  tableQrs        TableQr[]
+  analyticsEvents AnalyticsEvent[]
+  analyticsDaily  AnalyticsDaily[]
+  categoryTranslations CategoryTranslation[]
+  itemTranslations     MenuItemTranslation[]
+
+  @@index([organizationId])
+}
+
+model Category {
+  id        String   @id @default(cuid())
+  name      String
+  sortOrder Int      @default(0)
+  branchId  String
+  branch    Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  items     MenuItem[]
+  translations CategoryTranslation[]
+  seasonalMenus SeasonalMenuCategory[]
+
+  @@index([branchId])
+}
+
+model CategoryTranslation {
+  id         String   @id @default(cuid())
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  branchId   String
+  branch     Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  locale     String
+  name       String
+
+  @@unique([categoryId, locale])
+  @@index([branchId])
+}
+
+model MenuItem {
+  id            String   @id @default(cuid())
+  name          String
+  description   String?
+  price         Int // paise
+  imageUrl      String?
+  isVeg         Boolean  @default(true)
+  spicyLevel    Int      @default(0) // 0-3
+  prepMinutes   Int?
+  isAvailable   Boolean  @default(true)
+  isPopular     Boolean  @default(false)
+  sortOrder     Int      @default(0)
+  categoryId    String
+  category      Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  branchId      String
+  branch        Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  deletedAt     DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  translations  MenuItemTranslation[]
+  dailySpecials DailySpecial[]
+  seasonalMenus SeasonalMenuItem[]
+
+  @@index([branchId])
+  @@index([categoryId])
+}
+
+model MenuItemTranslation {
+  id          String   @id @default(cuid())
+  menuItemId  String
+  menuItem    MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  branchId    String
+  branch      Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  locale      String
+  name        String
+  description String?
+
+  @@unique([menuItemId, locale])
+  @@index([branchId])
+}
+
+// ─── Pro content ───────────────────────────────────────────
+
+model DailySpecial {
+  id         String    @id @default(cuid())
+  branchId   String
+  branch     Branch    @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  title      String?
+  menuItemId String?
+  menuItem   MenuItem? @relation(fields: [menuItemId], references: [id], onDelete: SetNull)
+  customName String?
+  customPrice Int?
+  activeDate DateTime  @db.Date
+  isActive   Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([branchId, activeDate])
+}
+
+enum PromotionType {
+  happy_hour
+  bogo
+  banner
+}
+
+model Promotion {
+  id          String        @id @default(cuid())
+  branchId    String
+  branch      Branch        @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  type        PromotionType @default(banner)
+  title       String
+  description String?
+  // Schedule: days 0-6 (Sun-Sat), start/end "HH:mm"
+  daysOfWeek  Int[]         @default([0, 1, 2, 3, 4, 5, 6])
+  startTime   String        @default("00:00")
+  endTime     String        @default("23:59")
+  isActive    Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([branchId])
+}
+
+model SeasonalMenu {
+  id        String   @id @default(cuid())
+  branchId  String
+  branch    Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  name      String
+  startAt   DateTime
+  endAt     DateTime
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  categories SeasonalMenuCategory[]
+  items      SeasonalMenuItem[]
+
+  @@index([branchId])
+}
+
+model SeasonalMenuCategory {
+  id             String       @id @default(cuid())
+  seasonalMenuId String
+  seasonalMenu   SeasonalMenu @relation(fields: [seasonalMenuId], references: [id], onDelete: Cascade)
+  categoryId     String
+  category       Category     @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([seasonalMenuId, categoryId])
+}
+
+model SeasonalMenuItem {
+  id             String       @id @default(cuid())
+  seasonalMenuId String
+  seasonalMenu   SeasonalMenu @relation(fields: [seasonalMenuId], references: [id], onDelete: Cascade)
+  menuItemId     String
+  menuItem       MenuItem     @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+
+  @@unique([seasonalMenuId, menuItemId])
+}
+
+model TableQr {
+  id         String   @id @default(cuid())
+  branchId   String
+  branch     Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  tableNumber Int
+  label      String?
+  createdAt  DateTime @default(now())
+
+  @@unique([branchId, tableNumber])
+  @@index([branchId])
+}
+
+// ─── Analytics ─────────────────────────────────────────────
+
+enum AnalyticsEventType {
+  scan
+  item_view
+  category_view
+}
+
+model AnalyticsEvent {
+  id          String             @id @default(cuid())
+  type        AnalyticsEventType
+  branchId    String
+  branch      Branch             @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  tableNumber Int?
+  itemId      String?
+  categoryId  String?
+  visitorHash String
+  hour        Int
+  dayBucket   DateTime           @db.Date
+  createdAt   DateTime           @default(now())
+
+  @@index([branchId, dayBucket])
+  @@index([branchId, type, dayBucket])
+  @@index([visitorHash, branchId, dayBucket])
+}
+
+model AnalyticsDaily {
+  id              String   @id @default(cuid())
+  branchId        String
+  branch          Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  dayBucket       DateTime @db.Date
+  scans           Int      @default(0)
+  itemViews       Int      @default(0)
+  categoryViews   Int      @default(0)
+  uniqueVisitors  Int      @default(0)
+  returningVisitors Int    @default(0)
+  hourBuckets     Json     @default("{}")
+  topItems        Json     @default("[]")
+  topCategories   Json     @default("[]")
+
+  @@unique([branchId, dayBucket])
+  @@index([branchId])
+}

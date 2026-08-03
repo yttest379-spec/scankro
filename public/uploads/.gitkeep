@@ -1,0 +1,3 @@
+# Ignore lock-in local artifacts
+/uploads/*
+!/uploads/.gitkeep

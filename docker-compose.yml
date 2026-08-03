@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: scankro
+      POSTGRES_PASSWORD: scankro
+      POSTGRES_DB: scankro
+    volumes:
+      - scankro_pg:/var/lib/postgresql/data
+
+volumes:
+  scankro_pg:
