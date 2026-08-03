@@ -39,7 +39,8 @@ yarn-error.log*
 # secrets / credentials notes (never commit)
 envCrendentials_necessary.md
 *credentials*
-*secrets*
+*secrets.md
+scripts/last-deploy-log.txt
 
 # vercel
 .vercel
@@ -47,9 +48,4 @@ envCrendentials_necessary.md
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-
-.vercel
-
-scripts/last-deploy-log.txt
-.env
 
